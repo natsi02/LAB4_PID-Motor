@@ -52,7 +52,7 @@ typedef struct _QEIStructure
 	uint64_t timestamp[2];
 	float unwrap[2];
 
-	double QEIVelocity;
+	float QEIVelocity;
 }QEIStructureTypeDef;
 QEIStructureTypeDef QEIData = {0};
 
@@ -109,6 +109,7 @@ int main(void)
   MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_1|TIM_CHANNEL_2);
+  HAL_TIM_Base_Start(&htim5);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -118,8 +119,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	Unwrapped_Signal();
-	Velocity_Approximation();
+//	static uint64_t timestamp = 0;
+//	int64_t currentTime = micros();
+//	if(currentTime>timestamp)
+//	{
+//		timestamp = currentTime + 100000;
+		Unwrapped_Signal();
+		Velocity_Approximation();
+//	}
+
   }
   /* USER CODE END 3 */
 }
@@ -351,6 +359,7 @@ void Unwrapped_Signal()
 	if(diffPosition >= threshold) QEIData.p0[0] -= maxPosition;
 	p0 = QEIData.p0[0] + QEIData.p0[1];
 	QEIData.unwrap[0] = p0 + QEIData.Position[0];
+
 	QEIData.p0[1] = QEIData.p0[0];
 	QEIData.Position[1] = QEIData.Position[0];
 
@@ -374,6 +383,7 @@ void Velocity_Approximation()
 {
 	//time
 	QEIData.timestamp[0] = micros();
+	//Velocity Approximate
 	float diffTime = QEIData.timestamp[0] - QEIData.timestamp[1];
 	float diffUnwrap = QEIData.unwrap[0] - QEIData.unwrap[1];
 	QEIData.QEIVelocity = (diffUnwrap*1000000)/diffTime;
