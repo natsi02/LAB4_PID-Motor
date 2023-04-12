@@ -58,6 +58,9 @@ QEIStructureTypeDef QEIData = {0};
 
 uint64_t _micros = 0;
 float maxPosition;
+int ReferenceVelocity;
+float kp,ki,kd;
+float vout;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -128,6 +131,7 @@ int main(void)
 		timestamp = currentTime + 10000;
 		Unwrapped_Signal();
 		Velocity_Approximation();
+		PIDControl();
 	}
   }
   /* USER CODE END 3 */
@@ -381,9 +385,10 @@ void Unwrapped_Signal()
 
 void Velocity_Approximation()
 {
-	//time
+	/*time*/
 	QEIData.timestamp[0] = micros();
-	//Velocity Approximate
+
+	/*Velocity Approximate*/
 	float diffUnwrap = QEIData.unwrap[0] - QEIData.unwrap[1];
 	float diffTime = QEIData.timestamp[0] - QEIData.timestamp[1];
 	QEIData.QEIVelocity = (diffUnwrap * 1000000) / diffTime;
@@ -392,17 +397,26 @@ void Velocity_Approximation()
 	QEIData.timestamp[1] = QEIData.timestamp[0];
 }
 
+void PIDControl()
+{
+	/*Error*/
+	float e = ReferenceVelocity - QEIData.QEIVelocity;
+	/*Integral Error*/
+	uint32_t eintegral;
+	eintegral += e*10000;
+	/*Differential Error*/
+	uint32_t edifferential;
+
+	/*PID Control*/
+	vout = (kp*e)+(ki*eintegral)+(kd*edifferential);
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim == &htim5)
 	{
 		_micros += UINT32_MAX;
 	}
-}
-
-void PIDControl()
-{
-
 }
 
 uint64_t micros()
