@@ -57,6 +57,7 @@ typedef struct _QEIStructure
 QEIStructureTypeDef QEIData = {0};
 
 uint64_t _micros = 0;
+float maxPosition;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,6 +70,7 @@ static void MX_TIM5_Init(void);
 inline uint64_t micros();
 void Unwrapped_Signal();
 void Velocity_Approximation();
+void PIDControl();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -119,15 +121,14 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//	static uint64_t timestamp = 0;
-//	int64_t currentTime = micros();
-//	if(currentTime>timestamp)
-//	{
-//		timestamp = currentTime + 100000;
+	static uint64_t timestamp = 0;
+	int64_t currentTime = micros();
+	if(currentTime>timestamp)
+	{
+		timestamp = currentTime + 10000;
 		Unwrapped_Signal();
 		Velocity_Approximation();
-//	}
-
+	}
   }
   /* USER CODE END 3 */
 }
@@ -345,14 +346,13 @@ void Unwrapped_Signal()
 	QEIData.Position[0] = (__HAL_TIM_GET_COUNTER(&htim3)/3072.0)*360;
 
 	//Find Pmax
-	float maxPosition;
 	if(QEIData.Position[0] > maxPosition) maxPosition = QEIData.Position[0];
 
 	//Diff Position
 	float diffPosition = QEIData.Position[0] - QEIData.Position[1];
 
 	float p0;
-	int threshold = 252;
+	int threshold = 234;
 
 	//Unwrapping
 	if(diffPosition <= -(threshold)) QEIData.p0[0] += maxPosition;
@@ -364,13 +364,13 @@ void Unwrapped_Signal()
 	QEIData.Position[1] = QEIData.Position[0];
 
 	//rotation Range
-	if(QEIData.unwrap[0] > 36000)
+	if(QEIData.unwrap[0] > 36000.0)
 	{
 		QEIData.unwrap[0] = 0;
 		QEIData.p0[0] = 0;
 		QEIData.p0[1] = 0;
 	}
-	if(QEIData.unwrap[0] < -36000)
+	if(QEIData.unwrap[0] < -36000.0)
 	{
 		QEIData.unwrap[0] = 0;
 		QEIData.p0[0] = 0;
@@ -384,9 +384,9 @@ void Velocity_Approximation()
 	//time
 	QEIData.timestamp[0] = micros();
 	//Velocity Approximate
-	float diffTime = QEIData.timestamp[0] - QEIData.timestamp[1];
 	float diffUnwrap = QEIData.unwrap[0] - QEIData.unwrap[1];
-	QEIData.QEIVelocity = (diffUnwrap*1000000)/diffTime;
+	float diffTime = QEIData.timestamp[0] - QEIData.timestamp[1];
+	QEIData.QEIVelocity = (diffUnwrap * 1000000) / diffTime;
 
 	QEIData.unwrap[1] = QEIData.unwrap[0];
 	QEIData.timestamp[1] = QEIData.timestamp[0];
@@ -398,6 +398,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	{
 		_micros += UINT32_MAX;
 	}
+}
+
+void PIDControl()
+{
+
 }
 
 uint64_t micros()
