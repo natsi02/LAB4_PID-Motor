@@ -405,10 +405,12 @@ void PIDControl()
 	uint32_t eintegral;
 	eintegral += e*10000;
 	/*Differential Error*/
-	uint32_t edifferential;
-
+	uint32_t edifferential[2];
+	edifferential[0] = e;
+	edifferential[0] -= edifferential[1]/(QEIData.timestamp[0] - QEIData.timestamp[1]);
 	/*PID Control*/
 	vout = (kp*e)+(ki*eintegral)+(kd*edifferential);
+	edifferential[1] = edifferential[0];
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
