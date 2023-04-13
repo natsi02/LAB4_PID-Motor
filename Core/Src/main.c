@@ -41,6 +41,7 @@
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim5;
 
 UART_HandleTypeDef huart2;
@@ -51,20 +52,19 @@ typedef struct _QEIStructure
 	float Position[2];
 	float p0[2];
 	uint64_t timestamp[2];
-	float unwrap[2];
-
-	float QEIVelocity;
 }QEIStructureTypeDef;
 QEIStructureTypeDef QEIData = {0};
 
 uint64_t _micros = 0;
 float DutyCycle;
 float maxPosition;
-float ReferenceVelocity;
+float ReferencePosition;
 float kp = 20;
 float ki;
 float kd;
-float vout;
+float pout;
+float Unwrap;
+
 
 /* USER CODE END PV */
 
@@ -75,6 +75,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 inline uint64_t micros();
 void Unwrapped_Signal();
@@ -119,11 +120,14 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM5_Init();
   MX_TIM1_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_1|TIM_CHANNEL_2);
   HAL_TIM_Base_Start(&htim5);
   HAL_TIM_Base_Start(&htim1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+  HAL_TIM_Base_Start(&htim4);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -139,7 +143,7 @@ int main(void)
 	{
 		timestamp = currentTime + 10000;
 		Unwrapped_Signal();
-		QEIData.QEIVelocity = Velocity_Approximation();
+//		QEIData.QEIVelocity = Velocity_Approximation();
 		DutyCycle = PIDControl();
 		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_3,DutyCycle*5);
 	}
@@ -318,6 +322,65 @@ static void MX_TIM3_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 83;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 499;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+  HAL_TIM_MspPostInit(&htim4);
+
+}
+
+/**
   * @brief TIM5 Initialization Function
   * @param None
   * @retval None
@@ -425,7 +488,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
-
 }
 
 /* USER CODE BEGIN 4 */
@@ -441,75 +503,81 @@ void Unwrapped_Signal()
 	float diffPosition = QEIData.Position[0] - QEIData.Position[1];
 
 	float p0;
-	int threshold = 234;
+	int threshold = 252;
 
 	//Unwrapping
 	if(diffPosition <= -(threshold)) QEIData.p0[0] += maxPosition;
 	if(diffPosition >= threshold) QEIData.p0[0] -= maxPosition;
 	p0 = QEIData.p0[0] + QEIData.p0[1];
-	QEIData.unwrap[0] = p0 + QEIData.Position[0];
+	Unwrap = p0 + QEIData.Position[0];
 
 	QEIData.p0[1] = QEIData.p0[0];
 	QEIData.Position[1] = QEIData.Position[0];
 
 	//rotation Range
-	if(QEIData.unwrap[0] > 36000.0)
+	if(Unwrap > 36000.0)
 	{
-		QEIData.unwrap[0] = 0;
+		Unwrap = 0;
 		QEIData.p0[0] = 0;
 		QEIData.p0[1] = 0;
 	}
-	if(QEIData.unwrap[0] < -36000.0)
+	if(Unwrap < -36000.0)
 	{
-		QEIData.unwrap[0] = 0;
+		Unwrap = 0;
 		QEIData.p0[0] = 0;
 		QEIData.p0[1] = 0;
 	}
-
-}
-
-float Velocity_Approximation()
-{
-	float velo;
-	/*time*/
-	QEIData.timestamp[0] = micros();
-
-	/*Velocity Approximate*/
-	float diffUnwrap = QEIData.unwrap[0] - QEIData.unwrap[1];
-	float diffTime = QEIData.timestamp[0] - QEIData.timestamp[1];
 
 	/*Fix unwrap signal*/
-	if(diffUnwrap > 360>>1) diffUnwrap -= 360;
-	if(diffUnwrap < -(360>>1)) diffUnwrap += 360;
-
-	velo = (diffUnwrap * 1000000) / diffTime;
-
-	QEIData.unwrap[1] = QEIData.unwrap[0];
-	QEIData.timestamp[1] = QEIData.timestamp[0];
-	return velo;
+//	float diffUnwrap;
+//	float prevUnwrap;
+//	diffUnwrap = Unwrap - prevUnwrap;
+//	if(diffUnwrap > 360>>1) Unwrap -= 360;
+//	if(diffUnwrap < -(360>>1)) Unwrap += 360;
+//
+//	prevUnwrap = Unwrap;
 }
+
+//float Velocity_Approximation()
+//{
+//	float velo;
+//	/*time*/
+//	QEIData.timestamp[0] = micros();
+//
+//	/*Velocity Approximate*/
+//	float diffUnwrap = QEIData.unwrap[0] - QEIData.unwrap[1];
+//	float diffTime = QEIData.timestamp[0] - QEIData.timestamp[1];
+//
+//
+//
+//	velo = (diffUnwrap * 1000000) / diffTime;
+//
+//	QEIData.unwrap[1] = QEIData.unwrap[0];
+//	QEIData.timestamp[1] = QEIData.timestamp[0];
+//	return velo;
+//}
 
 float PIDControl()
 {
 	/*Error*/
-	float e = ReferenceVelocity - QEIData.QEIVelocity;
+	float e = ReferencePosition - Unwrap;
 	float eprev;
 
 	/*Diff Time*/
 	float diffTime = (QEIData.timestamp[0] - QEIData.timestamp[1])/1000000;
 	/*Integral Error*/
-	float eintegral = eintegral+e*diffTime;;
+	float eintegral = eintegral+e*diffTime;
 	/*Differential Error*/
 	float edifferential = (e-eprev)/diffTime;
 
 	/*PID Control*/
 	float y;
-	vout = (kp*e)+(ki*eintegral)+(kd*edifferential);
+	pout = (kp*e)+(ki*eintegral)+(kd*edifferential);
 
 	eprev = e;
 	/*234 velocity max*/
 	/*Change to DutyCycle*/
-	y = (vout*100)/234.0;
+	y = (pout*100)/234.0;
 	if(y>100) y = 100;
 	if(y<100) y = 0;
 	return y;
