@@ -64,6 +64,7 @@ float ki;
 float kd;
 float pout;
 float Unwrap;
+int turn;
 
 
 /* USER CODE END PV */
@@ -145,7 +146,16 @@ int main(void)
 		Unwrapped_Signal();
 //		QEIData.QEIVelocity = Velocity_Approximation();
 		DutyCycle = PIDControl();
-		__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_3,DutyCycle*5);
+		if(turn == 0)
+		{
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_3,DutyCycle*5);
+			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,0);
+		}
+		if(turn == 1)
+		{
+			__HAL_TIM_SET_COMPARE(&htim4,TIM_CHANNEL_4,DutyCycle*5);
+			__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_3,0);
+		}
 	}
   }
   /* USER CODE END 3 */
@@ -488,6 +498,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -527,15 +538,6 @@ void Unwrapped_Signal()
 		QEIData.p0[0] = 0;
 		QEIData.p0[1] = 0;
 	}
-
-	/*Fix unwrap signal*/
-//	float diffUnwrap;
-//	float prevUnwrap;
-//	diffUnwrap = Unwrap - prevUnwrap;
-//	if(diffUnwrap > 360>>1) Unwrap -= 360;
-//	if(diffUnwrap < -(360>>1)) Unwrap += 360;
-//
-//	prevUnwrap = Unwrap;
 }
 
 //float Velocity_Approximation()
@@ -563,6 +565,14 @@ float PIDControl()
 	float e = ReferencePosition - Unwrap;
 	float eprev;
 
+	/*Turn Condition*/
+	if(e > 0) turn = 0;
+	if(e < 0)
+	{
+		turn = 1;
+		e = -(e);
+	}
+
 	/*Diff Time*/
 	float diffTime = (QEIData.timestamp[0] - QEIData.timestamp[1])/1000000;
 	/*Integral Error*/
@@ -578,6 +588,7 @@ float PIDControl()
 	/*234 velocity max*/
 	/*Change to DutyCycle*/
 	y = (pout*100)/234.0;
+	if(e < -2 || 2 > e) y = 0;
 	if(y>100) y = 100;
 	if(y<100) y = 0;
 	return y;
